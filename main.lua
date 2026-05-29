@@ -6,12 +6,14 @@ local addon = {}
 
 -- ----------------------------------------------------------------------------
 
-local function template(controlType)
+local function template(controlType, headerControlType)
     local T = {}
 
     setmetatable(T, {
-        __call = function(_, name, width, offsetX)
+        __call = function(_, name, width, offsetX, ...)
             local obj = {}
+
+            local extra = {...}
 
             obj.__type = controlType
             obj.__name = name
@@ -20,10 +22,8 @@ local function template(controlType)
             obj.__calls = {}
 
             function obj:Create(parent)
-                local realName = ('$(parent)%s'):format(name)
-                local real = CreateControl(realName, parent, controlType)
+                local real = self:__createFn(parent)
 
-                real:SetWidth(width)
                 real:SetAnchor(LEFT, parent, LEFT, offsetX)
 
                 for _, call in ipairs(self.__calls) do
@@ -35,13 +35,90 @@ local function template(controlType)
                 return real
             end
 
-            if controlType == CT_LABEL then
-                obj.__setFn = 'SetText'
+            function obj:CreateHeader(parent)
+                if self.__createFnH then
+                    local real = self:__createFnH(parent)
+
+                    real:SetAnchor(LEFT, parent, LEFT, offsetX)
+
+                    for _, call in ipairs(self.__calls) do
+                        local methodName = call[1]
+                        local args = { select(2, unpack(call)) }
+                        real[methodName](real, unpack(args))
+                    end
+
+                    return real
+                else
+                    return self:Create(parent)
+                end
             end
+
+            function obj:Set(ctrl, ...)
+                self.__setFn(ctrl, ...)
+            end
+
+            function obj:SetHeader(ctrl, ...)
+                if self.__setFnH then
+                    self.__setFnH(ctrl, ...)
+                else
+                    self:Set(ctrl, ...)
+                end
+            end
+
+            if controlType == CT_LABEL then
+                obj.__createFn = function(self_, parent)
+                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, self_.__type)
+                    c:SetWidth(self_.__width)
+                    return c
+                end
+                obj.__setFn = function(ctrl, ...) ctrl:SetText(...) end
+            elseif controlType == CT_TEXTURE then
+                obj.__createFn = function(self_, parent)
+                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, CT_CONTROL)
+                    c:SetWidth(self_.__width)
+                    local c_ = CreateControl('$(parent)Icon', c, self_.__type)
+                    c_:SetDimensions(extra[1], extra[2])
+                    c_:SetAnchor(CENTER)
+                    return c
+                end
+                obj.__setFn = function(ctrl, ...) ctrl:GetNamedChild('Icon'):SetTexture(...) end
+            end
+
+            -- TODO: DRY
+            if headerControlType == CT_LABEL then
+                obj.__createFnH = function(self_, parent)
+                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, headerControlType)
+                    c:SetWidth(self_.__width)
+                    return c
+                end
+                obj.__setFnH = function(ctrl, ...) ctrl:SetText(...) end
+            elseif headerControlType == CT_TEXTURE then
+                obj.__createFnH = function(self_, parent)
+                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, CT_CONTROL)
+                    c:SetWidth(self_.__width)
+                    local c_ = CreateControl('$(parent)Icon', c, headerControlType)
+                    c_:SetDimensions(extra[1], extra[2])
+                    c_:SetAnchor(CENTER)
+                    return c
+                end
+                obj.__setFnH = function(ctrl, ...) ctrl:GetNamedChild('Icon'):SetTexture(...) end
+            end
+
+            -- TODO: refactor
+            local WHITELIST = {
+                Create = true,
+                CreateHeader = true,
+                Set = true,
+                SetHeader = true,
+                __setFn = true,  -- ?
+                __setFnH = true,  -- ?
+                __createFn = true,  -- ?
+                __createFnH = true,  -- ?
+            }
 
             setmetatable(obj, {
                 __index = function(t, key)
-                    if key == 'Create' then return nil end
+                    if WHITELIST[key] then return nil end
 
                     return function(_, ...)
                         table.insert(t.__calls, { key, ... })
@@ -74,7 +151,8 @@ local function template(controlType)
 end
 
 local Label = template(CT_LABEL)
-local Texture = template(CT_LABEL)
+local Texture = template(CT_TEXTURE)
+local TextureWithTextHeader = template(CT_TEXTURE, CT_LABEL)
 
 
 local SCROLL_LIST_UNIFORM = 1
@@ -102,19 +180,20 @@ function Table:__init()
 
     self.isCreated = false
 
-    -- self.headerControls = {}
+    self.headerControls = {}
 
-    self.sortingKey = nil
-    self.sortingOrder = ZO_SORT_ORDER_UP
-    self.sortingKeys = {}
+    self.sortCriteria = {}
+    self.defaultSortingCriteria = {{columnIndex = 1, order = ZO_SORT_ORDER_UP}}  -- TODO: allow custom default sort ccriteria
 end
 
-function Table:AddDataType(dataTypeId, columns, height)
+function Table:AddDataType(dataTypeId, columns, height, postCreateCallback, postSetupCallback)
     assert(not self.__dataTypes[dataTypeId], 'Data type already added')
 
     self.__dataTypes[dataTypeId] = {
         columns = columns,
         height = height,
+        postCreate = postCreateCallback,
+        postSetup = postSetupCallback,
     }
 end
 
@@ -150,10 +229,6 @@ function Table:Create(name, parent)
 
     self.container = container
 
-    local sortingIndicator = CreateControl('$(parent)SortingOrderIndicator', header, CT_TEXTURE)
-    sortingIndicator:SetDimensions(16, 12)
-    self.sortingIndicator = sortingIndicator
-
     if self.__headerSpec then
         self:__buildHeaders()
     end
@@ -173,6 +248,8 @@ function Table:Update(dataTypeId, data)
         dataList[i] = ZO_ScrollList_CreateDataEntry(dataTypeId, data[i])
     end
 
+    self:__doSorting()
+
     ZO_ScrollList_Commit(self.scroll)
 end
 
@@ -182,6 +259,7 @@ function Table:__addDataType(dataTypeId)
     local dataTypeSpec = self.__dataTypes[dataTypeId]
     local columns, height = dataTypeSpec.columns, dataTypeSpec.height
 
+    local postCreate = self.__dataTypes[dataTypeId].postCreate
     local factory = function(objectPool)
         local newRow = CreateControlFromVirtual(
             '$(parent)Row', scroll.contents, 'ZO_SelectableLabel',
@@ -201,16 +279,25 @@ function Table:__addDataType(dataTypeId)
             end
             previousColumn = newColumn
         end
+
+        if postCreate then
+            postCreate(newRow)
+        end
+
         return newRow
     end
 
+    local postSetup = self.__dataTypes[dataTypeId].postSetup
     local setupCallback = function(rowControl, dataEntryData, scrollList)
         for i, column in ipairs(columns) do
             local e = rowControl:GetNamedChild(column.__name)
             if e then
-                local setFn = column.__setFn
-                e[setFn](e, dataEntryData[i])
+                column:Set(e, dataEntryData[i])
             end
+        end
+
+        if postSetup then
+            postSetup(rowControl, dataEntryData, scrollList)
         end
     end
 
@@ -244,6 +331,8 @@ local function HeaderLabel_ColorText(label, over)
     -- end
 end
 
+local SORT_INDICATOR_HEIGHT = 12
+local SORT_INDICATOR_WIDTH = 16
 function Table:__buildHeaders()
     local headerContainer = self.headerContainer
 
@@ -251,9 +340,7 @@ function Table:__buildHeaders()
     local columns = dataTypeSpec.columns
     local headerSpec = self.__headerSpec
 
-    -- local sortState = self.sortState[self.__headerDataType]
-
-    self.headerControls = {}
+    ZO_ClearTable(self.headerControls)  -- TODO: zo clear numerically indexed table?
 
     local previousHeader
     for i, column in ipairs(columns) do
@@ -261,9 +348,11 @@ function Table:__buildHeaders()
         local headerText = columnSpec[1]
         local overrides = columnSpec[2] or {}
 
-        local headerColumnCtrl = column:Create(headerContainer)
+        local headerColumnCtrl = column:CreateHeader(headerContainer)
 
-        headerColumnCtrl:SetText(headerText)
+        -- TODO: header text is bad naming, it can be texture as well
+        -- headerColumnCtrl[column.__setFn](headerColumnCtrl, headerText)
+        column:SetHeader(headerColumnCtrl, headerText)
 
         for methodName, args in pairs(overrides) do
             headerColumnCtrl[methodName](headerColumnCtrl, unpack(args))
@@ -276,11 +365,26 @@ function Table:__buildHeaders()
         headerColumnCtrl.table = self
 
         if sortable then
-            self.sortingKeys[i] = columnSpec[3] or {}
             headerColumnCtrl:SetMouseEnabled(true)
             headerColumnCtrl:SetHandler('OnMouseDown', self.__onHeaderClick)
             headerColumnCtrl:SetHandler('OnMouseEnter', function() HeaderLabel_ColorText(headerColumnCtrl, true) end)
             headerColumnCtrl:SetHandler('OnMouseExit', function() HeaderLabel_ColorText(headerColumnCtrl, false) end)
+
+            local sortingIndicator = CreateControl('$(parent)SortingIndicator', headerColumnCtrl, CT_CONTROL)  -- TODO: virtual control
+            sortingIndicator:SetResizeToFitDescendents(true)
+            sortingIndicator:SetDimensionConstraints(0, 0, 0, SORT_INDICATOR_HEIGHT)
+
+            local sortingLabel = CreateControl('$(parent)Label', sortingIndicator, CT_LABEL)
+            sortingLabel:SetAnchor(LEFT)
+            sortingLabel:SetFont('ZoFontWinH5')
+            sortingLabel:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+
+            local sortingIcon = CreateControl('$(parent)Icon', sortingIndicator, CT_TEXTURE)
+            sortingIcon:SetDimensions(SORT_INDICATOR_WIDTH, SORT_INDICATOR_HEIGHT)
+            sortingIcon:SetAnchor(LEFT, sortingLabel, RIGHT)
+
+            -- TODO: is acces by attribute like heacderControl.sortingIndicator is fater than GetNamedChild?
+            self:__updateSortingIndicator(headerColumnCtrl)
         end
 
         local _, _, _, _, offsetX = headerColumnCtrl:GetAnchor()
@@ -297,9 +401,11 @@ function Table:__buildHeaders()
         self.headerControls[i] = headerColumnCtrl
     end
 
-    headerContainer:SetHeight(self.__headerHeight or dataTypeSpec.height)
-
-    self:__updateSortingIndicator()
+    local headerHeight = self.__headerHeight or dataTypeSpec.height
+    if true then  -- if there are sortable coulmns
+        headerHeight = headerHeight + SORT_INDICATOR_HEIGHT * 2
+    end
+    headerContainer:SetDimensionConstraints(0, headerHeight, 0, 0)
 end
 
 local IS_LESS_THAN = -1
@@ -334,6 +440,20 @@ local function SortingFunction(left, right, key, keys, order)
     return false
 end
 
+local function MultiSortCompare(left, right, criteria)
+    for _, crit in ipairs(criteria) do
+        local col = crit.columnIndex
+        local l = left[col]
+        local r = right[col]
+        if l < r then
+            return crit.order == ZO_SORT_ORDER_UP
+        elseif l > r then
+            return crit.order == ZO_SORT_ORDER_DOWN
+        end
+    end
+    return false
+end
+
 local function _getNextSortingOrder(currentSortingOrder)
     if currentSortingOrder == ZO_SORT_ORDER_UP then
         return ZO_SORT_ORDER_DOWN
@@ -346,32 +466,54 @@ end
 
 function Table.__onHeaderClick(headerCtrl)
     local self = headerCtrl.table
-    local columnIndex = self.columnIndex
+    local columnIndex = headerCtrl.columnIndex
 
-    if self.sortingKey == columnIndex then
-        if self.defaultSortingKey then
-            self.sortingOrder = _getNextSortingOrder(self.sortingOrder)
-            if self.sortingOrder == nil then  -- TODO: probably move this guard after all checks?
-                self.sortingKey = self.defaultSortingKey
-                self.sortingOrder = self.defaultSortingOrder
-            end
-        else
-            self.sortingOrder = not self.sortingOrder
+    local existingIndex = nil
+    for i, criterium in ipairs(self.sortCriteria) do
+        if criterium.columnIndex == columnIndex then
+            existingIndex = i
+            break
         end
-    else
-        self.sortingOrder = ZO_SORT_ORDER_UP
-        self.sortingKey = columnIndex
     end
 
+    if existingIndex then
+        local criterium = self.sortCriteria[existingIndex]
+        local nextOrder = _getNextSortingOrder(criterium.order)
+        if nextOrder ~= nil then
+            criterium.order = nextOrder
+        else
+            table.remove(self.sortCriteria, existingIndex)
 
-    local scrollData = ZO_ScrollList_GetDataList(self.scroll)
-    table.sort(scrollData, function(leftDataEntry, rightDataEntry)
-        return SortingFunction(leftDataEntry.data, rightDataEntry.data, self.sortingKey, self.sortingKeys, self.sortingOrder)
-    end)
-    ZO_ScrollList_Commit(self.scroll)
+            for i, criterium_ in ipairs(self.sortCriteria) do
+                local columnIndex_ = criterium_.columnIndex
+                local headerControl = self.headerControls[columnIndex_]
+                headerControl:GetNamedChild('SortingIndicatorLabel'):SetText(i)
+            end
 
+        end
+    else
+        table.insert(self.sortCriteria, {columnIndex = columnIndex, order = ZO_SORT_ORDER_UP})
+    end
 
-    self:__updateSortingIndicator()
+    self:__doSorting()
+
+    self:__updateSortingIndicator(headerCtrl)
+end
+
+function Table:__doSorting()
+    if #self.sortCriteria > 0 then
+        local scrollData = ZO_ScrollList_GetDataList(self.scroll)
+        table.sort(scrollData, function(left, right)
+            return MultiSortCompare(left.data, right.data, self.sortCriteria)
+        end)
+        ZO_ScrollList_Commit(self.scroll)
+    elseif self.defaultSortingCriteria then
+        local scrollData = ZO_ScrollList_GetDataList(self.scroll)
+        table.sort(scrollData, function(left, right)
+            return MultiSortCompare(left.data, right.data, self.defaultSortingCriteria)
+        end)
+        ZO_ScrollList_Commit(self.scroll)
+    end
 end
 
 local ANCHORS_TABLE = {
@@ -389,40 +531,62 @@ local ANCHORS_TABLE = {
     },
 }
 
-function Table:__updateSortingIndicator()
-    if self.sortingKey then
-        local c = self.headerControls[self.sortingKey]
-        local sortingOrder = self.sortingOrder
+function Table:__updateSortingIndicator(c)
+    local sortingIndicator = c:GetNamedChild('SortingIndicator')
+    local columnIndex = c.columnIndex
 
-        local offsetX, point, relativePoint, texture
-
-        local hAlignment = c:GetHorizontalAlignment()
-        if hAlignment == TEXT_ALIGN_CENTER then
-            offsetX = 0
-        elseif hAlignment == TEXT_ALIGN_LEFT then
-            offsetX = c:GetTextWidth() / 2
-        elseif hAlignment == TEXT_ALIGN_RIGHT then
-            offsetX = -c:GetTextWidth() / 2
+    local existingIndex = nil
+    for i, criterium in ipairs(self.sortCriteria) do
+        if criterium.columnIndex == columnIndex then
+            existingIndex = i
+            break
         end
-
-        point = sortingOrder and BOTTOM or TOP
-        relativePoint = ANCHORS_TABLE[hAlignment][sortingOrder]
-        texture = sortingOrder and '/esoui/art/miscellaneous/list_sortup.dds' or '/esoui/art/miscellaneous/list_sortdown.dds'
-
-        self.sortingIndicator:ClearAnchors()
-
-        self.sortingIndicator:SetAnchor(point, c, relativePoint, offsetX, 0)
-        self.sortingIndicator:SetTexture(texture)
-        self.sortingIndicator:SetHidden(false)
-    else
-        self.sortingIndicator:SetHidden(true)
     end
+
+    if not existingIndex then
+        sortingIndicator:SetHidden(true)
+        return
+    end
+
+    local sortingOrder = self.sortCriteria[existingIndex].order
+
+    local offsetX, point, relativePoint, texture
+
+    local hAlignment = c:GetHorizontalAlignment()
+    if hAlignment == TEXT_ALIGN_CENTER then
+        offsetX = 0
+    elseif hAlignment == TEXT_ALIGN_LEFT then
+        offsetX = c:GetTextWidth() / 2
+    elseif hAlignment == TEXT_ALIGN_RIGHT then
+        offsetX = -c:GetTextWidth() / 2
+    end
+
+    if sortingOrder == ZO_SORT_ORDER_UP then
+        point = BOTTOM
+        texture = '/esoui/art/miscellaneous/list_sortup.dds'
+    else  -- nil handled above
+        point = TOP
+        texture = '/esoui/art/miscellaneous/list_sortdown.dds'
+    end
+    relativePoint = ANCHORS_TABLE[hAlignment][sortingOrder]
+
+    sortingIndicator:ClearAnchors()
+    sortingIndicator:SetAnchor(point, c, relativePoint, offsetX, 0)
+
+    sortingIndicator:GetNamedChild('Icon'):SetTexture(texture)
+    sortingIndicator:GetNamedChild('Label'):SetText(existingIndex)
+    sortingIndicator:SetHidden(false)
+end
+
+function Table:ResizeToFitNRows(dataTypeId, num)
+    self.container:SetHeight(num * self.__dataTypes[dataTypeId].height + self.headerContainer:GetHeight())
 end
 
 
 addon.Table = Table
 addon.Label = Label
 addon.Texture = Texture
+addon.TextureWithTextHeader = TextureWithTextHeader
 
 LibTableTools = addon
 
