@@ -15,29 +15,35 @@ local function CreateInventoryTable()
         SetVerticalAlignment = {TEXT_ALIGN_CENTER}
     })
 
-    local HEADER_COLOR = {0.811, 0.862, 0.741}
-    local HEADER_FONT = 'ZoFontGameLargeBold'
+
     local columns = {
-        DefaultLabel(
-            'ItemId', 85, 0,
-            {'Item ID', HEADER_FONT, HEADER_COLOR}
-        ):SetHorizontalAlignment(TEXT_ALIGN_RIGHT),
+        DefaultLabel('ItemId', 85, 0)
+        :SetHorizontalAlignment(TEXT_ALIGN_RIGHT),
 
-        DefaultLabel(
-            'ItemName', 400, 16,
-            {'Item Name', HEADER_FONT, HEADER_COLOR}
-        ):SetHorizontalAlignment(TEXT_ALIGN_LEFT),
+        DefaultLabel('ItemName', 400, 16)
+        :SetHorizontalAlignment(TEXT_ALIGN_LEFT),
 
-        DefaultLabel(
-            'Amount', 60, 0,
-            {'Qty', HEADER_FONT, HEADER_COLOR}
-        ):SetHorizontalAlignment(TEXT_ALIGN_CENTER),
+        DefaultLabel('Qty', 60, 0)
+        :SetHorizontalAlignment(TEXT_ALIGN_CENTER),
     }
 
-    local myTable = Table(columns, 32)
-    -- GLOBAL_IMP_EXAMPLE_TABLE = myTable
+    local headersStyle = {
+        SetFont = {'ZoFontGameLargeBold'},
+        SetColor = {0.811, 0.862, 0.741}
+    }
+    local headers = {
+        {  'Item ID', headersStyle, sortable = true, },
+        {'Item Name', headersStyle, sortable = true, },
+        {      'Qty', headersStyle, sortable = true, {tiebreaker = 2, tiebreakerSortingOrder = ZO_SORT_ORDER_UP}},
+    }
 
-    local scrollControl = myTable('InventoryItems', window)
+    local myTable = Table()
+    myTable:AddDataType(1, columns, 32)
+    myTable:AddHeader(1, headers, 48)
+
+    GLOBAL_IMP_EXAMPLE_TABLE = myTable
+
+    local scrollControl = myTable:Create('InventoryItems', window)
     scrollControl:SetAnchorFill()
 
     local data = {}
@@ -54,7 +60,7 @@ local function CreateInventoryTable()
 
     table.sort(data, function(a, b) return a[2] < b[2] end)
 
-    myTable:Update(data)
+    myTable:Update(1, data)
 end
 
 
