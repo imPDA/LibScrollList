@@ -1,5 +1,5 @@
 name: Publish
-run-name: Create release draft for LibTableTools ${{ github.ref_name }} and publish it to ESOUI website
+run-name: Create release draft for LibScrollList ${{ github.ref_name }} and publish it to ESOUI website
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     - name: Set up environment
       id: setup
       run: |
-        addon_name="LibTableTools"
+        addon_name="LibScrollList"
 
         SOURCE_DIR="."
         DEST_DIR="/tmp/${addon_name}"

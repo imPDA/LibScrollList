@@ -1,13 +1,14 @@
-## Title: |cAFD3FFLibTableTools|r
+## Title: |cAFD3FFLibScrollList|r
 ## Description: ?_?
 ## Author: |c7c42f2@impda|r
-## AddOnVersion: 1
+## AddOnVersion: 2
 ## APIVersion: 101049
 ## IsLibrary: true
 ## OptionalDependsOn: Zgoo
 
 class.lua
 
+controls.xml
 main.lua
 ; example.lua
 

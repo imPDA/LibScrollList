@@ -1,2 +1,9 @@
+V.2 
+- Renamed
+- Reworked
+- Added multicolumn sorting
+- Added IMP_TallListSelectedHighlight texture to avoid overriding (DarkUI)
+
+
 V. 1
 - Initial

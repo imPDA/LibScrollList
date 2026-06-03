@@ -1,63 +1,75 @@
-local Label = LibTableTools.Label
-local Table = LibTableTools.Table
+local Label = LibScrollList.Label
+local Table = LibScrollList.Table
+local Column = LibScrollList.Column
+local combine = LibScrollList.combine
 
 
 local function CreateInventoryTable()
     -- 1. Create parent control, I created simple flex window (it will resize to fit everythin inside) with default background
-    local window = CreateControl('LibTableTools_ExampleTLC', GuiRoot, CT_TOPLEVELCONTROL)
+    local window = CreateControl('LibScrollList_ExampleTLC', GuiRoot, CT_TOPLEVELCONTROL)
     window:SetAnchor(CENTER)
     window:SetResizeToFitDescendents(true)
 
     local background = CreateControlFromVirtual('$(parent)Background', window, 'ZO_DefaultBackdrop')
     background:SetExcludeFromResizeToFitExtents(true)
 
-    -- 2. Create default style for all labels in table
-    -- (optional, just makes life simpler as all labels will follow this standard -> simpler to change, less error)
-    local DefaultLabel = Label:WithDefaults({
+    -- 2. Create styles for all cells and headers in table
+    -- P.S. In this examle all columns are different, but you can use the same style for diffrent columns to make them identically styled
+    -- DefaultLabel = Label(defaultStyle)
+    -- columns = {
+    --     'Column1', 100, 0, DefaultLabel, 'Column 1',
+    --     'Column2', 100, 0, DefaultLabel, 'Column 2',
+    --     'Column3', 100, 0, DefaultLabel, 'Column 3',
+    --     'Column4', 100, 0, DefaultLabel, 'Column 4',
+    -- }
+    -- This creates 4 columns of the same style, and headers will be the same style as well if you create it with columns
+
+    local defaultCellStyle = {
         SetFont = {'ZoFontWinH4'},
-        SetVerticalAlignment = {TEXT_ALIGN_CENTER}
-    })
-
-    -- 3. Create list of columns
-    local columns = {
-        DefaultLabel('ItemId', 85, 0)  -- control name, width, offsetX from previous column
-        :SetHorizontalAlignment(TEXT_ALIGN_RIGHT),  -- you can modify them using default functions
-        -- :SomethingElse(...arguments)  -- and chain all methods like this
-
-        DefaultLabel('ItemName', 400, 16)
-        :SetHorizontalAlignment(TEXT_ALIGN_LEFT),
-
-        DefaultLabel('Qty', 60, 0)
-        :SetHorizontalAlignment(TEXT_ALIGN_CENTER),
+        SetVerticalAlignment = {TEXT_ALIGN_CENTER},
     }
 
-    -- 4. If you want to add header - create style for headers as well
-    -- You can create separate style for every header of just use the same style for all of them
-    local headersStyle = {
+    local defaultHeaderStyle = {
         SetFont = {'ZoFontGameLargeBold'},
         SetColor = {0.811, 0.862, 0.741},
         SetModifyTextType = {MODIFY_TEXT_TYPE_UPPERCASE},
     }
-    -- Add `sortable = true` to make header sortable
-    local headers = {
-        {  'Item ID', headersStyle, sortable = true, },  -- name, style, ?sortable
-        {'Item Name', headersStyle, sortable = true, },
-        {      'Qty', headersStyle, sortable = true, },
+
+    local alighLeft = {SetHorizontalAlignment = {TEXT_ALIGN_LEFT}}
+    local alighCenter = {SetHorizontalAlignment = {TEXT_ALIGN_CENTER}}
+    local alighRight = {SetHorizontalAlignment = {TEXT_ALIGN_RIGHT}}
+
+    local addQty = function(ctrl, value) ctrl:SetText(('%s pcs'):format(value)) end  -- setFn to modify value
+
+    local IdCell = Label(combine(defaultCellStyle, alighRight))  -- combine can be used to combine styles
+    local NameCell = Label(combine(defaultCellStyle, alighLeft))
+    local QtyCell = Label(combine(defaultCellStyle, alighRight), addQty)
+
+    local IdHeader = Label(combine(defaultHeaderStyle, alighRight))
+    local NameHeader = Label(combine(defaultHeaderStyle, alighLeft))
+    local QtyHeader = Label(combine(defaultHeaderStyle, alighRight), addQty)
+
+    -- 3. Create list of columns
+    local SORTABLE = true
+    local columns = {
+        Column('ItemId',    80,  0, IdCell,     'Item ID', IdHeader,   SORTABLE),
+        Column('ItemName', 400, 16, NameCell, 'Item Name', NameHeader, SORTABLE),
+        Column('Qty',       80,  0, QtyCell,        'Qty', QtyHeader,  SORTABLE),
     }
 
-    -- 5. Prepare base
-    local myTable = Table()
+    -- 4. Prepare base
+    local WITH_HEADERS = true
+    local myTable = Table(WITH_HEADERS)
     myTable:AddDataType(1, columns, 32)  -- dataType, list of columns, heigth
-    myTable:AddHeader(1, headers)  -- dataType, list of header styles, height (default = same as row heigth + space for sorting indicator if sortable)
 
     -- GLOBAL_IMP_EXAMPLE_TABLE = myTable
 
-    -- 6. Create all controls (you can do it later, on window open for example)
+    -- 5. Create all controls (you can do it later, on window open for example)
     local scrollControl = myTable:Create('InventoryItems', window)
-    scrollControl:SetDimensions(570, 600)  -- now you can modify it as you want
+    scrollControl:SetDimensions(600, 600)  -- now you can modify it as you want
     scrollControl:SetAnchor(CENTER)  -- and position
 
-    -- 7. Prepare some data, list of values, {<column 1 value>, <column 2 value>}
+    -- 6. Prepare some data, list of values, {<column 1 value>, <column 2 value>}
     local data = {}
     local bag = BAG_BACKPACK
     local numSlots = GetBagSize(bag)
@@ -70,10 +82,10 @@ local function CreateInventoryTable()
         end
     end
 
-    -- 8. Presort if you want, or if you have no sortable columns set 
+    -- 7. Presort if you want, or if you have no sortable columns set 
     -- table.sort(data, function(a, b) return a[2] < b[2] end)
 
-    -- 9. Fill with data
+    -- 8. Fill with data
     myTable:Update(1, data)  -- dataType, list of data
 end
 

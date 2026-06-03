@@ -1,4 +1,4 @@
-local class = IMP_LibTableTools__class
+local class = IMP_LibScrollList__class
 
 -- ----------------------------------------------------------------------------
 
@@ -6,153 +6,147 @@ local addon = {}
 
 -- ----------------------------------------------------------------------------
 
-local function template(controlType, headerControlType)
-    local T = {}
+local labelPrimitiveSetFunction = function(ctrl, value) ctrl:SetText(value) end
+local texturePrimitiveSetFunction = function(ctrl, value) ctrl:SetTexture(value) end
+local buttonPrimitiveSetStateFunction = function(ctrl, nexState, locked) ctrl:SetState(nexState, locked) end
 
-    setmetatable(T, {
-        __call = function(_, name, width, offsetX, ...)
-            local obj = {}
+local Label = class()
 
-            local extra = {...}
-
-            obj.__type = controlType
-            obj.__name = name
-            obj.__width = width
-            obj.__offsetX = offsetX
-            obj.__calls = {}
-
-            function obj:Create(parent)
-                local real = self:__createFn(parent)
-
-                real:SetAnchor(LEFT, parent, LEFT, offsetX)
-
-                for _, call in ipairs(self.__calls) do
-                    local methodName = call[1]
-                    local args = { select(2, unpack(call)) }
-                    real[methodName](real, unpack(args))
-                end
-
-                return real
-            end
-
-            function obj:CreateHeader(parent)
-                if self.__createFnH then
-                    local real = self:__createFnH(parent)
-
-                    real:SetAnchor(LEFT, parent, LEFT, offsetX)
-
-                    for _, call in ipairs(self.__calls) do
-                        local methodName = call[1]
-                        local args = { select(2, unpack(call)) }
-                        real[methodName](real, unpack(args))
-                    end
-
-                    return real
-                else
-                    return self:Create(parent)
-                end
-            end
-
-            function obj:Set(ctrl, ...)
-                self.__setFn(ctrl, ...)
-            end
-
-            function obj:SetHeader(ctrl, ...)
-                if self.__setFnH then
-                    self.__setFnH(ctrl, ...)
-                else
-                    self:Set(ctrl, ...)
-                end
-            end
-
-            if controlType == CT_LABEL then
-                obj.__createFn = function(self_, parent)
-                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, self_.__type)
-                    c:SetWidth(self_.__width)
-                    return c
-                end
-                obj.__setFn = function(ctrl, ...) ctrl:SetText(...) end
-            elseif controlType == CT_TEXTURE then
-                obj.__createFn = function(self_, parent)
-                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, CT_CONTROL)
-                    c:SetWidth(self_.__width)
-                    local c_ = CreateControl('$(parent)Icon', c, self_.__type)
-                    c_:SetDimensions(extra[1], extra[2])
-                    c_:SetAnchor(CENTER)
-                    return c
-                end
-                obj.__setFn = function(ctrl, ...) ctrl:GetNamedChild('Icon'):SetTexture(...) end
-            end
-
-            -- TODO: DRY
-            if headerControlType == CT_LABEL then
-                obj.__createFnH = function(self_, parent)
-                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, headerControlType)
-                    c:SetWidth(self_.__width)
-                    return c
-                end
-                obj.__setFnH = function(ctrl, ...) ctrl:SetText(...) end
-            elseif headerControlType == CT_TEXTURE then
-                obj.__createFnH = function(self_, parent)
-                    local c = CreateControl(('$(parent)%s'):format(self_.__name), parent, CT_CONTROL)
-                    c:SetWidth(self_.__width)
-                    local c_ = CreateControl('$(parent)Icon', c, headerControlType)
-                    c_:SetDimensions(extra[1], extra[2])
-                    c_:SetAnchor(CENTER)
-                    return c
-                end
-                obj.__setFnH = function(ctrl, ...) ctrl:GetNamedChild('Icon'):SetTexture(...) end
-            end
-
-            -- TODO: refactor
-            local WHITELIST = {
-                Create = true,
-                CreateHeader = true,
-                Set = true,
-                SetHeader = true,
-                __setFn = true,  -- ?
-                __setFnH = true,  -- ?
-                __createFn = true,  -- ?
-                __createFnH = true,  -- ?
-            }
-
-            setmetatable(obj, {
-                __index = function(t, key)
-                    if WHITELIST[key] then return nil end
-
-                    return function(_, ...)
-                        table.insert(t.__calls, { key, ... })
-                        return t
-                    end
-                end
-            })
-
-            return obj
-        end
-    })
-
-    function T:WithDefaults(defaults)
-        local baseFactory = self
-        local newFactory = {}
-        setmetatable(newFactory, {
-            __call = function(_, name, ...)
-                local proxy = baseFactory(name, ...)
-                for methodName, methodArgs in pairs(defaults) do
-                    local callEntry = {methodName, unpack(methodArgs)}
-                    table.insert(proxy.__calls, 1, callEntry)
-                end
-                return proxy
-            end
-        })
-        return newFactory
-    end
-
-    return T
+function Label:__init(style, setFn)
+    self.style = style or {}
+    self.setFn = setFn or labelPrimitiveSetFunction
 end
 
-local Label = template(CT_LABEL)
-local Texture = template(CT_TEXTURE)
-local TextureWithTextHeader = template(CT_TEXTURE, CT_LABEL)
+function Label:Create(name, parent, width)
+    local label = CreateControl(('$(parent)%s'):format(name), parent, CT_LABEL)
+    label:SetWidth(width)
+
+    for method, args in pairs(self.style) do
+        if type(method) == 'function' then
+            method(label, unpack(args))
+        else
+            label[method](label, unpack(args))
+        end
+    end
+
+    -- for method, args in pairs(self.__calls) do
+    --     if type(method) == 'function' then
+    --         method(label, unpack(args))
+    --     else
+    --         label[method](label, unpack(args))
+    --     end
+    -- end
+
+    return label
+end
+
+function Label:Set(ctrl, value)
+    self.setFn(ctrl, value)
+end
+
+local Texture = class()
+
+function Texture:__init(style, setFn)
+    self.style = style or {}
+    self.setFn = setFn or texturePrimitiveSetFunction
+end
+
+function Texture:Create(name, parent, width)
+    local container = CreateControl(('$(parent)%s'):format(name), parent, CT_CONTROL)
+    container:SetWidth(width)
+
+    local icon = CreateControl('$(parent)Icon', container, CT_TEXTURE)
+    icon:SetAnchor(CENTER)
+
+    for method, args in pairs(self.style) do
+        if type(method) == 'function' then
+            method(icon, unpack(args))
+        else
+            icon[method](icon, unpack(args))
+        end
+    end
+
+    return container
+end
+
+function Texture:Set(ctrl, value)
+    self.setFn(ctrl:GetNamedChild('Icon'), value)
+end
+
+
+local Button = class()
+
+function Button:__init(style, setFn, callback)
+    self.style = style or {}
+    self.setFn = setFn or buttonPrimitiveSetStateFunction
+    self.cb = callback
+end
+
+function Button:Create(name, parent, width)
+    local container = CreateControl(('$(parent)%s'):format(name), parent, CT_CONTROL)
+    container:SetWidth(width)
+
+    local button = CreateControl('$(parent)Button', container, CT_BUTTON)
+    button:SetAnchor(CENTER)
+
+    if self.cb then
+        -- button:SetMouseEnabled(true)
+        button:SetHandler('OnMouseDown', self.cb)
+    end
+
+    for method, args in pairs(self.style) do
+        if type(method) == 'function' then
+            method(button, unpack(args))
+        else
+            button[method](button, unpack(args))
+        end
+    end
+
+    return container
+end
+
+function Button:Set(ctrl, newState, locked)
+    self.setFn(ctrl:GetNamedChild('Button'), newState, locked)
+end
+
+-- ----------------------------------------------------------------------------
+
+local Column = class()
+
+function Column:__init(name, width, offsetX, cell, headerText, header, sortable)
+    -- TODO: check if type is in mapping
+    self.width = width
+    self.offsetX = offsetX
+    self.name = name
+    self.cell = cell
+    self.sortable = sortable
+    -- self.hAlighnment = hAlighnment
+
+    self.header = header or cell
+    self.headerText = headerText or ''
+end
+
+function Column:CreateCell(parent)
+    return self.cell:Create(self.name, parent, self.width)
+end
+
+function Column:CreateHeader(parent)
+    local header = self.header:Create(self.name, parent, self.width)
+    self:SetHeader(header, self.headerText)
+    return header
+end
+
+function Column:Set(ctrl, value)
+    return self.cell:Set(ctrl, value)
+end
+
+function Column:SetHeader(ctrl, value)
+    if self.header then
+       return self.header:Set(ctrl, value)
+    else
+        return self:Set(ctrl, value)
+    end
+end
 
 
 local SCROLL_LIST_UNIFORM = 1
@@ -173,10 +167,12 @@ end
 
 local Table = class()
 
-function Table:__init()
+function Table:__init(withHeaders)
     self.__dataTypes = {}
-    self.__headerDataType = nil
-    self.__headerSpec = nil
+    -- self.__headerDataType = nil
+    -- self.__headerSpec = nil
+
+    self.withHeaders = withHeaders
 
     self.isCreated = false
 
@@ -197,19 +193,24 @@ function Table:AddDataType(dataTypeId, columns, height, postCreateCallback, post
     }
 end
 
-function Table:AddHeader(dataTypeId, headerSpec, headerHeight)
-    assert(self.__dataTypes[dataTypeId], 'Data type not added yet')
+-- function Table:AddHeader(dataTypeId, headerSpec, headerHeight)
+--     assert(self.__dataTypes[dataTypeId], 'Data type not added yet')
 
-    self.__headerDataType = dataTypeId
-    self.__headerSpec = headerSpec
-    self.__headerHeight = headerHeight
-end
+--     self.__headerDataType = dataTypeId
+--     self.__headerSpec = headerSpec
+--     self.__headerHeight = headerHeight
+-- end
 
-function Table:Create(name, parent)
+function Table:Create(name, parent, replace)
     assert(not self.isCreated, 'Table already created')
 
-    local containerName = ('$(parent)%s'):format(name)
-    local container = CreateControl(containerName, parent, CT_CONTROL)
+    local container
+    if replace then
+        container = parent:GetNamedChild(name)
+        assert(container, 'Control not found!')
+    else
+        container = CreateControl(('$(parent)%s'):format(name), parent, CT_CONTROL)
+    end
 
     -- if no header set, it will be empty container, kinda meh
     -- but it simplifies things a bit, no infinite checks all around
@@ -229,7 +230,7 @@ function Table:Create(name, parent)
 
     self.container = container
 
-    if self.__headerSpec then
+    if self.withHeaders then
         self:__buildHeaders()
     end
 
@@ -267,17 +268,17 @@ function Table:__addDataType(dataTypeId)
         )
         newRow:SetHeight(height)
 
-        local previousColumn
+        local previousCell
         for _, column in ipairs(columns) do
-            local newColumn = column:Create(newRow)
-            local _, _, _, _, offsetX = newColumn:GetAnchor()
-            newColumn:ClearAnchors()
-            if previousColumn then
-                newColumn:SetAnchor(LEFT, previousColumn, RIGHT, offsetX, 0)
+            local newCell = column:CreateCell(newRow)
+            -- local _, _, _, _, offsetX = newCell:GetAnchor()
+            newCell:ClearAnchors()
+            if previousCell then
+                newCell:SetAnchor(LEFT, previousCell, RIGHT, column.offsetX, 0)
             else
-                newColumn:SetAnchor(LEFT, nil, nil, offsetX, 0)
+                newCell:SetAnchor(LEFT, nil, nil, column.offsetX, 0)
             end
-            previousColumn = newColumn
+            previousCell = newCell
         end
 
         if postCreate then
@@ -290,7 +291,7 @@ function Table:__addDataType(dataTypeId)
     local postSetup = self.__dataTypes[dataTypeId].postSetup
     local setupCallback = function(rowControl, dataEntryData, scrollList)
         for i, column in ipairs(columns) do
-            local e = rowControl:GetNamedChild(column.__name)
+            local e = rowControl:GetNamedChild(column.name) 
             if e then
                 column:Set(e, dataEntryData[i])
             end
@@ -336,31 +337,35 @@ local SORT_INDICATOR_WIDTH = 16
 function Table:__buildHeaders()
     local headerContainer = self.headerContainer
 
-    local dataTypeSpec = self.__dataTypes[self.__headerDataType]
+    -- TODO: limitation for now, only dataType = 1 can have header
+    -- TODO: future feature - change headers
+    local dataTypeId = 1
+
+    local dataTypeSpec = self.__dataTypes[dataTypeId]
     local columns = dataTypeSpec.columns
-    local headerSpec = self.__headerSpec
+    -- local headerSpec = self.__headerSpec
 
     ZO_ClearTable(self.headerControls)  -- TODO: zo clear numerically indexed table?
 
     local previousHeader
     for i, column in ipairs(columns) do
-        local columnSpec = headerSpec[i]
-        local headerText = columnSpec[1]
-        local overrides = columnSpec[2] or {}
+        -- local columnSpec = headerSpec[i]
+        -- local headerText = columnSpec[1]
+        -- local overrides = columnSpec[2] or {}
 
         local headerColumnCtrl = column:CreateHeader(headerContainer)
 
         -- TODO: header text is bad naming, it can be texture as well
         -- headerColumnCtrl[column.__setFn](headerColumnCtrl, headerText)
-        column:SetHeader(headerColumnCtrl, headerText)
+        -- column:SetHeader(headerColumnCtrl, headerText)
 
-        for methodName, args in pairs(overrides) do
-            headerColumnCtrl[methodName](headerColumnCtrl, unpack(args))
-        end
+        -- for methodName, args in pairs(overrides) do
+        --     headerColumnCtrl[methodName](headerColumnCtrl, unpack(args))
+        -- end
 
-        local sortable = columnSpec.sortable
+        local sortable = column.sortable
 
-        headerColumnCtrl.dataTypeId = self.__headerDataType
+        headerColumnCtrl.dataTypeId = dataTypeId
         headerColumnCtrl.columnIndex = i
         headerColumnCtrl.table = self
 
@@ -387,13 +392,13 @@ function Table:__buildHeaders()
             self:__updateSortingIndicator(headerColumnCtrl)
         end
 
-        local _, _, _, _, offsetX = headerColumnCtrl:GetAnchor()
+        -- local _, _, _, _, offsetX = headerColumnCtrl:GetAnchor()
         headerColumnCtrl:ClearAnchors()
 
         if previousHeader then
-            headerColumnCtrl:SetAnchor(LEFT, previousHeader, RIGHT, offsetX, 0)
+            headerColumnCtrl:SetAnchor(LEFT, previousHeader, RIGHT, column.offsetX, 0)
         else
-            headerColumnCtrl:SetAnchor(LEFT, nil, nil, offsetX, 0)
+            headerColumnCtrl:SetAnchor(LEFT, nil, nil, column.offsetX, 0)
         end
 
         previousHeader = headerColumnCtrl
@@ -408,49 +413,31 @@ function Table:__buildHeaders()
     headerContainer:SetDimensionConstraints(0, headerHeight, 0, 0)
 end
 
-local IS_LESS_THAN = -1
-local IS_EQUAL_TO = 0
-local IS_GREATER_THAN = 1
-local function SortingFunction(left, right, key, keys, order)
-    local l, r = left[key], right[key]
-
-    local compareResult
-    if l < r then
-        compareResult = IS_LESS_THAN
-    elseif l > r then
-        compareResult = IS_GREATER_THAN
-    else
-        compareResult = IS_EQUAL_TO
-    end
-
-    if compareResult == IS_EQUAL_TO then
-        local tiebreaker = keys[key].tiebreaker
-
-        if tiebreaker then
-            return SortingFunction(left, right, tiebreaker, keys, keys[key].tiebreakerSortingOrder or order)
-        end
-    else
-        if order == ZO_SORT_ORDER_UP then
-            return compareResult == IS_LESS_THAN
-        end
-
-        return compareResult == IS_GREATER_THAN
-    end
-
-    return false
-end
-
 local function MultiSortCompare(left, right, criteria)
-    for _, crit in ipairs(criteria) do
+    for c = 1, #criteria do
+    -- for _, crit in ipairs(criteria) do
+        local crit = criteria[c]
         local col = crit.columnIndex
         local l = left[col]
         local r = right[col]
-        if l < r then
-            return crit.order == ZO_SORT_ORDER_UP
-        elseif l > r then
-            return crit.order == ZO_SORT_ORDER_DOWN
+
+        local lIsNil = (l == nil)
+        local rIsNil = (r == nil)
+
+        -- nil handling: non‑nil always comes first (independent of direction)
+        if lIsNil ~= rIsNil then
+            return not lIsNil   -- true if l is non‑nil and r is nil
+        end
+
+        if not lIsNil then
+            if l < r then
+                return crit.order == ZO_SORT_ORDER_UP
+            elseif l > r then
+                return crit.order == ZO_SORT_ORDER_DOWN
+            end
         end
     end
+
     return false
 end
 
@@ -497,6 +484,8 @@ function Table.__onHeaderClick(headerCtrl)
 
     self:__doSorting()
 
+    ZO_ScrollList_Commit(self.scroll)
+
     self:__updateSortingIndicator(headerCtrl)
 end
 
@@ -506,13 +495,13 @@ function Table:__doSorting()
         table.sort(scrollData, function(left, right)
             return MultiSortCompare(left.data, right.data, self.sortCriteria)
         end)
-        ZO_ScrollList_Commit(self.scroll)
+        -- ZO_ScrollList_Commit(self.scroll)
     elseif self.defaultSortingCriteria then
         local scrollData = ZO_ScrollList_GetDataList(self.scroll)
         table.sort(scrollData, function(left, right)
             return MultiSortCompare(left.data, right.data, self.defaultSortingCriteria)
         end)
-        ZO_ScrollList_Commit(self.scroll)
+        -- ZO_ScrollList_Commit(self.scroll)
     end
 end
 
@@ -583,11 +572,37 @@ function Table:ResizeToFitNRows(dataTypeId, num)
 end
 
 
+local function _deep_merge(base, overrides)
+    if type(base) ~= 'table' or type(overrides) ~= 'table' then
+        return overrides
+    end
+
+    local result = {}
+
+    for k, v in pairs(base) do
+        result[k] = v
+    end
+
+    for k, v in pairs(overrides) do
+        if type(v) == 'table' and type(result[k]) == 'table' then
+            result[k] = _deep_merge(result[k], v)
+        else
+            result[k] = v
+        end
+    end
+
+    return result
+end
+
+addon.combine = _deep_merge
+
+
 addon.Table = Table
 addon.Label = Label
 addon.Texture = Texture
-addon.TextureWithTextHeader = TextureWithTextHeader
+addon.Button = Button
+addon.Column = Column
 
-LibTableTools = addon
+LibScrollList = addon
 
-IMP_LibTableTools__class = nil
+IMP_LibScrollList__class = nil

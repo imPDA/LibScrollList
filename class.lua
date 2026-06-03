@@ -13,4 +13,4 @@ local function class()
 	return cls
 end
 
-IMP_LibTableTools__class = class
+IMP_LibScrollList__class = class
