@@ -1,9 +1,14 @@
+V.3
+- Single column search is default now 
+- Added new methods SetDefaultSortingCriteria, SetHeadersHidden, SetMulticolumnSortingEnabled, ClearSorting
+- Added alias for Table - ScrollList
+- Other small fixes
+
 V.2 
 - Renamed
 - Reworked
 - Added multicolumn sorting
 - Added IMP_TallListSelectedHighlight texture to avoid overriding (DarkUI)
-
 
 V. 1
 - Initial
