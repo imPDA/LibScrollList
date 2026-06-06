@@ -35,19 +35,19 @@ local function CreateInventoryTable()
         SetModifyTextType = {MODIFY_TEXT_TYPE_UPPERCASE},
     }
 
-    local alighLeft = {SetHorizontalAlignment = {TEXT_ALIGN_LEFT}}
-    local alighCenter = {SetHorizontalAlignment = {TEXT_ALIGN_CENTER}}
-    local alighRight = {SetHorizontalAlignment = {TEXT_ALIGN_RIGHT}}
+    local alignLeft = {SetHorizontalAlignment = {TEXT_ALIGN_LEFT}}
+    local alignCenter = {SetHorizontalAlignment = {TEXT_ALIGN_CENTER}}
+    local alignRight = {SetHorizontalAlignment = {TEXT_ALIGN_RIGHT}}
 
     local addQty = function(ctrl, value) ctrl:SetText(('%s pcs'):format(value)) end  -- setFn to modify value
 
-    local IdCell = Label(combine(defaultCellStyle, alighRight))  -- combine can be used to combine styles
-    local NameCell = Label(combine(defaultCellStyle, alighLeft))
-    local QtyCell = Label(combine(defaultCellStyle, alighRight), addQty)
+    local IdCell = Label(combine(defaultCellStyle, alignRight))  -- combine can be used to combine styles
+    local NameCell = Label(combine(defaultCellStyle, alignLeft))
+    local QtyCell = Label(combine(defaultCellStyle, alignRight), addQty)
 
-    local IdHeader = Label(combine(defaultHeaderStyle, alighRight))
-    local NameHeader = Label(combine(defaultHeaderStyle, alighLeft))
-    local QtyHeader = Label(combine(defaultHeaderStyle, alighRight), addQty)
+    local IdHeader = Label(combine(defaultHeaderStyle, alignRight))
+    local NameHeader = Label(combine(defaultHeaderStyle, alignLeft))
+    local QtyHeader = Label(combine(defaultHeaderStyle, alignRight), addQty)
 
     -- 3. Create list of columns
     local SORTABLE = true

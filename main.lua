@@ -106,7 +106,6 @@ function Column:__init(name, width, offsetX, cell, headerText, header, sortable)
     self.name = name
     self.cell = cell
     self.sortable = sortable
-    -- self.hAlighnment = hAlighnment
 
     self.header = header or cell
     self.headerText = headerText or ''
