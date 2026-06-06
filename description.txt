@@ -1,1 +1,18 @@
-Set of instruments to simplify table creation.
+[CENTER][SIZE=6][COLOR=#d4af37]LibScrollList[/COLOR][/SIZE]
+[SIZE=4]Feature‑rich scrollable tables for ESO UI addons[/SIZE][/CENTER]
+[CENTER][SIZE="2"][URL="https://github.com/impda/libscrolllist"][COLOR="deepskyblue"][B]GitHub Link[/B][/COLOR][/URL][/SIZE][/CENTER]
+
+[B][SIZE=3]Why another list library?[/SIZE][/B]
+Creating multi‑column scroll lists in the Elder Scrolls Online UI is verbose and repetitive. [COLOR=#d4af37]LibScrollList[/COLOR] wraps the native [I]ZO_ScrollList[/I] into a clean, column‑based API with built‑in sorting, headers, and reusable cell types. Spend less time wrestling with anchors and more time building your UI.
+
+[B][SIZE=3]Highlights[/SIZE][/B]
+[LIST]
+[*][B]Column‑first design[/B] – define columns with labels, textures, or buttons; the library handles layout.
+[*][B]Automatic sorting[/B] – click column headers to sort ascending/descending, with optional multi‑column sorting.
+[*][B]Flexible cell types[/B] – ready‑to‑use Label, Texture, and Button cells; add your own with simple OOP.
+[*][B]Clean, [COLOR="deepskyblue"]documented API[/COLOR][/B] – method names that make sense, plus a full [COLOR="deepskyblue"]README with examples on GitHub[/COLOR].
+[*][B]Lightweight[/B] – no extra dependencies, just pure Lua that respects ESO’s UI conventions.
+[/LIST]
+
+[COLOR=#aaaaaa]For questions, suggestions, or bug reports, please use the GitHub issue tracker or comment section.
+[I]AI is (obviously) used to create this description, but code itself is fully human-crafted :)[/I][/COLOR]

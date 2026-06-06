@@ -6,6 +6,18 @@ local addon = {}
 
 -- ----------------------------------------------------------------------------
 
+local function __applyStyle(ctrl, style)
+    for method, args in pairs(style) do
+        if type(method) == 'function' then  -- [function(ctrl) ... end] = {...}
+            method(ctrl, unpack(args))
+        elseif type(method) == 'number' then  -- {'SetHandler', 'OnMouseOver', function(ctrl) ... end}
+            ctrl[args[1]](ctrl, select(2, unpack(args)))
+        else
+            ctrl[method](ctrl, unpack(args))  -- SetHandler = {'OnMouseOver', function(ctrl) ... end}
+        end
+    end
+end
+
 local labelPrimitiveSetFunction = function(ctrl, value) ctrl:SetText(value) end
 local texturePrimitiveSetFunction = function(ctrl, value) ctrl:SetTexture(value) end
 local buttonPrimitiveSetStateFunction = function(ctrl, nexState, locked) ctrl:SetState(nexState, locked) end
@@ -21,21 +33,7 @@ function Label:Create(name, parent, width)
     local label = CreateControl(('$(parent)%s'):format(name), parent, CT_LABEL)
     label:SetWidth(width)
 
-    for method, args in pairs(self.style) do
-        if type(method) == 'function' then
-            method(label, unpack(args))
-        else
-            label[method](label, unpack(args))
-        end
-    end
-
-    -- for method, args in pairs(self.__calls) do
-    --     if type(method) == 'function' then
-    --         method(label, unpack(args))
-    --     else
-    --         label[method](label, unpack(args))
-    --     end
-    -- end
+    __applyStyle(label, self.style)
 
     return label
 end
@@ -58,13 +56,7 @@ function Texture:Create(name, parent, width)
     local icon = CreateControl('$(parent)Icon', container, CT_TEXTURE)
     icon:SetAnchor(CENTER)
 
-    for method, args in pairs(self.style) do
-        if type(method) == 'function' then
-            method(icon, unpack(args))
-        else
-            icon[method](icon, unpack(args))
-        end
-    end
+    __applyStyle(icon, self.style)
 
     return container
 end
@@ -94,13 +86,7 @@ function Button:Create(name, parent, width)
         button:SetHandler('OnMouseDown', self.cb)
     end
 
-    for method, args in pairs(self.style) do
-        if type(method) == 'function' then
-            method(button, unpack(args))
-        else
-            button[method](button, unpack(args))
-        end
-    end
+    __applyStyle(button, self.style)
 
     return container
 end
@@ -180,6 +166,45 @@ function Table:__init(withHeaders)
 
     self.sortCriteria = {}
     self.defaultSortingCriteria = {{columnIndex = 1, order = ZO_SORT_ORDER_UP}}  -- TODO: allow custom default sort ccriteria
+end
+
+function Table:SetDefaultSortingCriteria(...)
+    local args = {...}
+    assert(#args % 2 == 0, 'Even number of arguments must be provided!')
+
+    local defaults = self.defaultSortingCriteria
+
+    ZO_ClearNumericallyIndexedTable(defaults)
+    for i = 1, #args, 2 do
+        defaults[#defaults+1] = {columnIndex = args[i], order = args[i+1]}
+    end
+end
+
+function Table:SetHeadersHidden(hidden)
+    -- it always created, even if no headers set, so we are safe here
+    self.headerContainer:SetHidden(hidden)
+
+    -- reanchoring is kinda meh, so just shift instead of header should work fine
+    local offsetY = hidden and -self.headerContainer:GetHeight() or 0
+    self.scroll:SetAnchorOffsets(0, offsetY)
+
+    ZO_ScrollList_Commit(self.scroll)
+end
+
+function Table:SetMulticolumnSortingEnabled(enabled)
+    self.multicolumnSort = enabled
+end
+
+function Table:ClearSorting()
+    for c, criteria in pairs(self.sortCriteria) do
+        local columnIndex = criteria.columnIndex
+        self.sortCriteria[c] = nil
+        self:__updateSortingIndicator(self.headerControls[columnIndex])
+    end
+
+    self:__doSorting()
+
+    ZO_ScrollList_Commit(self.scroll)
 end
 
 function Table:AddDataType(dataTypeId, columns, height, postCreateCallback, postSetupCallback)
@@ -372,8 +397,11 @@ function Table:__buildHeaders()
         if sortable then
             headerColumnCtrl:SetMouseEnabled(true)
             headerColumnCtrl:SetHandler('OnMouseDown', self.__onHeaderClick)
-            headerColumnCtrl:SetHandler('OnMouseEnter', function() HeaderLabel_ColorText(headerColumnCtrl, true) end)
-            headerColumnCtrl:SetHandler('OnMouseExit', function() HeaderLabel_ColorText(headerColumnCtrl, false) end)
+
+            if not headerColumnCtrl:GetHandler('OnMouseEnter') then
+                headerColumnCtrl:SetHandler('OnMouseEnter', function() HeaderLabel_ColorText(headerColumnCtrl, true) end)
+                headerColumnCtrl:SetHandler('OnMouseExit', function() HeaderLabel_ColorText(headerColumnCtrl, false) end)
+            end
 
             local sortingIndicator = CreateControl('$(parent)SortingIndicator', headerColumnCtrl, CT_CONTROL)  -- TODO: virtual control
             sortingIndicator:SetResizeToFitDescendents(true)
@@ -411,6 +439,7 @@ function Table:__buildHeaders()
         headerHeight = headerHeight + SORT_INDICATOR_HEIGHT * 2
     end
     headerContainer:SetDimensionConstraints(0, headerHeight, 0, 0)
+    -- headerContainer:SetDimensions(nil, headerHeight)
 end
 
 local function MultiSortCompare(left, right, criteria)
@@ -479,6 +508,11 @@ function Table.__onHeaderClick(headerCtrl)
 
         end
     else
+        if #self.sortCriteria > 0 and not self.multicolumnSort then
+            local headerToRemoveIndicatorFrom = self.headerControls[self.sortCriteria[1].columnIndex]
+            ZO_ClearNumericallyIndexedTable(self.sortCriteria)  -- TODO: waisiting table
+            self:__updateSortingIndicator(headerToRemoveIndicatorFrom)
+        end
         table.insert(self.sortCriteria, {columnIndex = columnIndex, order = ZO_SORT_ORDER_UP})
     end
 
@@ -563,7 +597,7 @@ function Table:__updateSortingIndicator(c)
     sortingIndicator:SetAnchor(point, c, relativePoint, offsetX, 0)
 
     sortingIndicator:GetNamedChild('Icon'):SetTexture(texture)
-    sortingIndicator:GetNamedChild('Label'):SetText(existingIndex)
+    sortingIndicator:GetNamedChild('Label'):SetText(self.multicolumnSort and existingIndex or '')
     sortingIndicator:SetHidden(false)
 end
 
@@ -598,6 +632,7 @@ addon.combine = _deep_merge
 
 
 addon.Table = Table
+addon.ScrollList = Table
 addon.Label = Label
 addon.Texture = Texture
 addon.Button = Button
