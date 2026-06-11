@@ -1,3 +1,7 @@
+V.4
+- Default styles (for some types)
+- Autocreation of header based on cell style (for some types)
+
 V.3
 - Single column search is default now 
 - Added new methods SetDefaultSortingCriteria, SetHeadersHidden, SetMulticolumnSortingEnabled, ClearSorting

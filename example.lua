@@ -24,6 +24,7 @@ local function CreateInventoryTable()
     -- }
     -- This creates 4 columns of the same style, and headers will be the same style as well if you create it with columns
 
+    ----[[
     local defaultCellStyle = {
         SetFont = {'ZoFontWinH4'},
         SetVerticalAlignment = {TEXT_ALIGN_CENTER},
@@ -56,13 +57,24 @@ local function CreateInventoryTable()
         Column('ItemName', 400, 16, NameCell, 'Item Name', NameHeader, SORTABLE),
         Column('Qty',       80,  0, QtyCell,        'Qty', QtyHeader,  SORTABLE),
     }
+    --]]
+
+    -- 3.1 How to create table with default styles
+    --[[
+    local D = LibScrollList.Defaults
+    local columns = {
+        Column('ItemId',    80,  0, D.LabelRight,     'Item ID', nil, SORTABLE),
+        Column('ItemName', 400, 16, D.LabelLeft, 'Item Name', nil, SORTABLE),
+        Column('Qty',       80,  0, D.LabelRight,        'Qty', nil, SORTABLE),
+    }
+    ]]
 
     -- 4. Prepare base
     local WITH_HEADERS = true
     local myTable = Table(WITH_HEADERS)
     myTable:AddDataType(1, columns, 32)  -- dataType, list of columns, heigth
 
-    -- GLOBAL_IMP_EXAMPLE_TABLE = myTable
+    GLOBAL_IMP_EXAMPLE_TABLE = myTable
 
     -- 5. Create all controls (you can do it later, on window open for example)
     local scrollControl = myTable:Create('InventoryItems', window)

@@ -1,5 +1,7 @@
 local class = IMP_LibScrollList__class
 
+local deep_table_copy = ZO_DeepTableCopy
+
 -- ----------------------------------------------------------------------------
 
 local addon = {}
@@ -22,10 +24,21 @@ local labelPrimitiveSetFunction = function(ctrl, value) ctrl:SetText(value) end
 local texturePrimitiveSetFunction = function(ctrl, value) ctrl:SetTexture(value) end
 local buttonPrimitiveSetStateFunction = function(ctrl, nexState, locked) ctrl:SetState(nexState, locked) end
 
+-- TODO: for console separate style?
+local DEFAULT_LABEL_STYLE = {
+    SetFont = {'ZoFontWinH4'},
+    SetHorizontalAlignment = {TEXT_ALIGN_RIGHT},
+    SetColor = {1, 1, 1, 1},
+}
+
+local DEFAULT_TEXTURE_STYLE = {
+    SetDimensions = {32, 32},
+}
+
 local Label = class()
 
 function Label:__init(style, setFn)
-    self.style = style or {}
+    self.style = style or DEFAULT_LABEL_STYLE
     self.setFn = setFn or labelPrimitiveSetFunction
 end
 
@@ -42,10 +55,16 @@ function Label:Set(ctrl, value)
     self.setFn(ctrl, value)
 end
 
+function Label:Copy()
+    local style = deep_table_copy(self.style)
+    return Label(style, self.setFn)
+end
+
+
 local Texture = class()
 
 function Texture:__init(style, setFn)
-    self.style = style or {}
+    self.style = style or DEFAULT_TEXTURE_STYLE
     self.setFn = setFn or texturePrimitiveSetFunction
 end
 
@@ -63,6 +82,11 @@ end
 
 function Texture:Set(ctrl, value)
     self.setFn(ctrl:GetNamedChild('Icon'), value)
+end
+
+function Texture:Copy()
+    local style = deep_table_copy(self.style)
+    return Texture(style, self.setFn)
 end
 
 
@@ -107,8 +131,19 @@ function Column:__init(name, width, offsetX, cell, headerText, header, sortable)
     self.cell = cell
     self.sortable = sortable
 
-    self.header = header or cell
+    self.header = header
     self.headerText = headerText or ''
+
+    if not header then
+        local copiedCell = cell:Copy()
+
+        if copiedCell.__index == Label then
+            copiedCell.style.SetModifyTextType = {MODIFY_TEXT_TYPE_UPPERCASE}
+            copiedCell.style.SetColor = {ZO_NORMAL_TEXT:UnpackRGBA()}
+        end
+
+        self.header = copiedCell
+    end
 end
 
 function Column:CreateCell(parent)
@@ -340,14 +375,16 @@ function Table:__addDataType(dataTypeId)
     UpdateModeFromHeight(scroll, height)
 end
 
-local function HeaderLabel_ColorText(label, over)
-    local normalColor = label.defaultNormalColor or ZO_NORMAL_TEXT
+local function HeaderLabel_ColorText(label, over, columnObject)
+    local normalColor = columnObject.header.style.SetColor  -- or ZO_NORMAL_TEXT
     local highlightColor = label.defaultHighlightColor or ZO_HIGHLIGHT_TEXT
 
     if over then
-        label:SetColor(highlightColor:UnpackRGBA())
+        label:SetColor(highlightColor:UnpackRGBA())  -- TODO: custom height color
     else
-        label:SetColor(normalColor:UnpackRGBA())
+        if normalColor then
+            label:SetColor(unpack(normalColor))
+        end
     end
 
     -- else
@@ -369,6 +406,8 @@ function Table:__buildHeaders()
     local columns = dataTypeSpec.columns
     -- local headerSpec = self.__headerSpec
 
+    local headerHeight = self.__headerHeight or dataTypeSpec.height
+
     ZO_ClearTable(self.headerControls)  -- TODO: zo clear numerically indexed table?
 
     local previousHeader
@@ -378,6 +417,7 @@ function Table:__buildHeaders()
         -- local overrides = columnSpec[2] or {}
 
         local headerColumnCtrl = column:CreateHeader(headerContainer)
+        headerColumnCtrl:SetDimensionConstraints(0, headerHeight, 0, 0)
 
         -- TODO: header text is bad naming, it can be texture as well
         -- headerColumnCtrl[column.__setFn](headerColumnCtrl, headerText)
@@ -398,8 +438,10 @@ function Table:__buildHeaders()
             headerColumnCtrl:SetHandler('OnMouseDown', self.__onHeaderClick)
 
             if not headerColumnCtrl:GetHandler('OnMouseEnter') then
-                headerColumnCtrl:SetHandler('OnMouseEnter', function() HeaderLabel_ColorText(headerColumnCtrl, true) end)
-                headerColumnCtrl:SetHandler('OnMouseExit', function() HeaderLabel_ColorText(headerColumnCtrl, false) end)
+                if headerColumnCtrl.SetText then
+                    headerColumnCtrl:SetHandler('OnMouseEnter', function() HeaderLabel_ColorText(headerColumnCtrl, true, column) end)
+                    headerColumnCtrl:SetHandler('OnMouseExit', function() HeaderLabel_ColorText(headerColumnCtrl, false, column) end)
+                end
             end
 
             local sortingIndicator = CreateControl('$(parent)SortingIndicator', headerColumnCtrl, CT_CONTROL)  -- TODO: virtual control
@@ -433,7 +475,6 @@ function Table:__buildHeaders()
         self.headerControls[i] = headerColumnCtrl
     end
 
-    local headerHeight = self.__headerHeight or dataTypeSpec.height
     if true then  -- if there are sortable coulmns
         headerHeight = headerHeight + SORT_INDICATOR_HEIGHT * 2
     end
@@ -574,13 +615,19 @@ function Table:__updateSortingIndicator(c)
 
     local offsetX, point, relativePoint, texture
 
-    local hAlignment = c:GetHorizontalAlignment()
-    if hAlignment == TEXT_ALIGN_CENTER then
+    local hAlignment
+    if c.SetText then  -- TODO: add method GetAlignment? AddIndicator(top/bottom)?
+        hAlignment = c:GetHorizontalAlignment()
+        if hAlignment == TEXT_ALIGN_CENTER then
+            offsetX = 0
+        elseif hAlignment == TEXT_ALIGN_LEFT then
+            offsetX = c:GetTextWidth() / 2
+        elseif hAlignment == TEXT_ALIGN_RIGHT then
+            offsetX = -c:GetTextWidth() / 2
+        end
+    else
+        hAlignment = TEXT_ALIGN_CENTER
         offsetX = 0
-    elseif hAlignment == TEXT_ALIGN_LEFT then
-        offsetX = c:GetTextWidth() / 2
-    elseif hAlignment == TEXT_ALIGN_RIGHT then
-        offsetX = -c:GetTextWidth() / 2
     end
 
     if sortingOrder == ZO_SORT_ORDER_UP then
@@ -636,6 +683,17 @@ addon.Label = Label
 addon.Texture = Texture
 addon.Button = Button
 addon.Column = Column
+
+
+local alignLeft = {SetHorizontalAlignment = {TEXT_ALIGN_LEFT}}
+local alignCenter = {SetHorizontalAlignment = {TEXT_ALIGN_CENTER}}
+local alignRight = {SetHorizontalAlignment = {TEXT_ALIGN_RIGHT}}
+
+addon.Defaults = {
+    LabelLeft   = Label(_deep_merge(DEFAULT_LABEL_STYLE, alignLeft)),
+    LabelRight  = Label(_deep_merge(DEFAULT_LABEL_STYLE, alignRight)),
+    LabelCenter = Label(_deep_merge(DEFAULT_LABEL_STYLE, alignCenter)),
+}
 
 LibScrollList = addon
 
